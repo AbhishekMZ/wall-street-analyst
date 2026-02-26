@@ -114,20 +114,34 @@ def import_from_csv(csv_content: str) -> dict:
     """
     Import portfolio from CSV. Expected columns (flexible matching):
     ticker/symbol/stock, qty/quantity/shares, avg_price/price/buy_price, date/buy_date
+    Handles broker statement formats with metadata rows.
     """
-    reader = csv.DictReader(io.StringIO(csv_content))
+    # Clean CSV: skip metadata rows, find header row
+    lines = csv_content.strip().split('\n')
+    header_idx = 0
+    
+    # Look for the header row (contains "Scrip" or "ticker" or "symbol")
+    for i, line in enumerate(lines):
+        lower_line = line.lower()
+        if any(keyword in lower_line for keyword in ['scrip', 'ticker', 'symbol', 'stock', 'instrument']):
+            header_idx = i
+            break
+    
+    # Reconstruct CSV from header onwards
+    clean_csv = '\n'.join(lines[header_idx:])
+    
+    reader = csv.DictReader(io.StringIO(clean_csv))
     if not reader.fieldnames:
         return {"error": "Empty or invalid CSV"}
 
     # Flexible column mapping
-    fields = [f.lower().strip() for f in reader.fieldnames]
     ticker_col = next((f for f in reader.fieldnames if f.lower().strip() in
-                       ("ticker", "symbol", "stock", "scrip", "name", "instrument")), None)
+                       ("ticker", "symbol", "stock", "scrip", "scrip/contract", "name", "instrument")), None)
     qty_col = next((f for f in reader.fieldnames if f.lower().strip() in
                     ("qty", "quantity", "shares", "units", "no. of shares")), None)
     price_col = next((f for f in reader.fieldnames if f.lower().strip() in
                       ("avg_price", "price", "buy_price", "average price", "avg price",
-                       "avg. price", "purchase price", "cost")), None)
+                       "avg. price", "avg trading price", "purchase price", "cost")), None)
     date_col = next((f for f in reader.fieldnames if f.lower().strip() in
                      ("date", "buy_date", "purchase date", "purchase_date")), None)
 
@@ -138,18 +152,22 @@ def import_from_csv(csv_content: str) -> dict:
     errors = []
     for row in reader:
         try:
-            ticker = row[ticker_col].strip().upper()
-            if not ticker:
+            ticker_raw = row[ticker_col].strip().upper()
+            if not ticker_raw or len(ticker_raw) < 2:
                 continue
 
+            # Extract ticker symbol (handle formats like "MARINE" or "HDFCBANK")
+            ticker = ticker_raw.split()[0] if ' ' in ticker_raw else ticker_raw
+            
             qty = float(row[qty_col].replace(",", "")) if qty_col and row.get(qty_col) else 1
             price = float(row[price_col].replace(",", "")) if price_col and row.get(price_col) else 0
             date = row.get(date_col, "").strip() if date_col else None
 
-            add_holding(ticker, qty, price, date)
-            imported += 1
+            if qty > 0 and price > 0:
+                add_holding(ticker, qty, price, date)
+                imported += 1
         except Exception as e:
-            errors.append(f"Row {ticker}: {str(e)}")
+            errors.append(f"Row {ticker_raw if 'ticker_raw' in locals() else 'unknown'}: {str(e)}")
 
     return {"imported": imported, "errors": errors, "total_rows": imported + len(errors)}
 
