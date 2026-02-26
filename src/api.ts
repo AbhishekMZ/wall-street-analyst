@@ -82,4 +82,18 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ csv_content: csvContent }),
     }),
+
+  uploadPortfolio: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/api/portfolio/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Upload failed');
+    }
+    return res.json();
+  },
 };

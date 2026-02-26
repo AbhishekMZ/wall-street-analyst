@@ -3,12 +3,14 @@ Wall Street Analyst — FastAPI Backend
 Indian Market Decision System with multi-factor analysis.
 """
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import pandas as pd
+import io
 
 from .config import NIFTY50
 from .decision_engine import analyze_stock, save_decision, load_decisions
@@ -323,3 +325,26 @@ async def remove_portfolio_holding(req: RemoveHoldingRequest):
 async def import_portfolio(req: CSVImportRequest):
     """Import portfolio from CSV content."""
     return import_from_csv(req.csv_content)
+
+
+@app.post("/api/portfolio/upload")
+async def upload_portfolio(file: UploadFile = File(...)):
+    """Upload portfolio from Excel (.xlsx) or CSV file."""
+    try:
+        contents = await file.read()
+        
+        if file.filename.endswith('.xlsx') or file.filename.endswith('.xls'):
+            # Read Excel file
+            df = pd.read_excel(io.BytesIO(contents))
+            csv_content = df.to_csv(index=False)
+        elif file.filename.endswith('.csv'):
+            # Read CSV file
+            csv_content = contents.decode('utf-8')
+        else:
+            raise HTTPException(status_code=400, detail="File must be .xlsx, .xls, or .csv")
+        
+        # Import using existing CSV import logic
+        result = import_from_csv(csv_content)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error processing file: {str(e)}")

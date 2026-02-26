@@ -56,6 +56,9 @@ export default function PortfolioPanel() {
   const [csvText, setCsvText] = useState('');
   const [importing, setImporting] = useState(false);
 
+  // File upload
+  const [uploading, setUploading] = useState(false);
+
   const loadPerf = async () => {
     setLoading(true);
     setError('');
@@ -118,6 +121,25 @@ export default function PortfolioPanel() {
     }
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setUploading(true);
+    setError('');
+    try {
+      const result = await api.uploadPortfolio(file) as any;
+      alert(`Imported ${result.imported} holdings` + (result.errors?.length ? `\nErrors: ${result.errors.join(', ')}` : ''));
+      setShowImport(false);
+      loadPerf();
+      if (e.target) e.target.value = '';
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const sevColor: Record<string, string> = {
     high: 'border-red-500/20 bg-red-500/5 text-red-400',
     medium: 'border-amber-500/20 bg-amber-500/5 text-amber-400',
@@ -133,9 +155,14 @@ export default function PortfolioPanel() {
           <h3 className="text-white font-bold text-base">My Portfolio</h3>
         </div>
         <div className="flex gap-2">
+          <label className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold transition-colors cursor-pointer">
+            <Upload size={13} />
+            {uploading ? 'Uploading...' : 'Upload Excel/CSV'}
+            <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} className="hidden" disabled={uploading} />
+          </label>
           <button onClick={() => { setShowImport(!showImport); setShowAdd(false); }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-zinc-300 text-xs font-medium hover:bg-white/10 transition-colors cursor-pointer">
-            <Upload size={13} /> Import CSV
+            <Upload size={13} /> Paste CSV
           </button>
           <button onClick={() => { setShowAdd(!showAdd); setShowImport(false); }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors cursor-pointer">
