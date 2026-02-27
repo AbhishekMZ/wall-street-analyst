@@ -25,7 +25,7 @@ from .portfolio_manager import (
 app = FastAPI(
     title="Wall Street Analyst API",
     description="Indian Market Decision System with institutional-grade analysis",
-    version="1.0.0",
+    version="1.1.0",
 )
 
 app.add_middleware(
