@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 import io
 
-from .config import NIFTY50
+from .config import NIFTY50, NIFTY_NEXT50, MIDCAP_GEMS, SMALLCAP_HIDDEN, ALL_UNIVERSES
 from .decision_engine import analyze_stock, save_decision, load_decisions
 from .data_fetcher import fetch_global_indicators, fetch_stock_info
 from .report_generator import generate_weekly_report, generate_cumulative_report
@@ -247,9 +247,101 @@ async def stock_info(ticker: str):
 # ------- NIFTY 50 LIST -------
 
 @app.get("/api/universe")
-async def get_universe():
-    """Get the default stock universe (Nifty 50)."""
-    return {"tickers": NIFTY50, "count": len(NIFTY50)}
+async def get_universe(category: str = Query("all")):
+    """Get stock universe by category."""
+    if category == "all":
+        all_tickers = NIFTY50 + NIFTY_NEXT50 + MIDCAP_GEMS + SMALLCAP_HIDDEN
+        # deduplicate
+        seen = set()
+        unique = []
+        for t in all_tickers:
+            if t not in seen:
+                seen.add(t)
+                unique.append(t)
+        return {
+            "tickers": unique,
+            "count": len(unique),
+            "categories": {
+                "nifty50": len(NIFTY50),
+                "nifty_next50": len(NIFTY_NEXT50),
+                "midcap_gems": len(MIDCAP_GEMS),
+                "smallcap_hidden": len(SMALLCAP_HIDDEN),
+            },
+        }
+    universes = ALL_UNIVERSES
+    tickers = universes.get(category, NIFTY50)
+    return {"tickers": tickers, "count": len(tickers), "category": category}
+
+
+@app.post("/api/scan/universe")
+async def scan_universe(category: str = Query("nifty50"), top_n: int = Query(10)):
+    """Scan a specific stock universe for opportunities."""
+    universes = ALL_UNIVERSES
+    tickers = universes.get(category, NIFTY50)
+    loop = asyncio.get_event_loop()
+
+    results = []
+    for ticker in tickers:
+        try:
+            result = await loop.run_in_executor(executor, analyze_stock, ticker)
+            if "error" not in result:
+                results.append(result)
+        except Exception as e:
+            print(f"Error analyzing {ticker}: {e}")
+
+    results.sort(key=lambda x: x.get("composite_score", 0), reverse=True)
+    buys = [r for r in results if r["action"] in ("STRONG_BUY", "BUY")][:top_n]
+    sells = [r for r in results if r["action"] in ("STRONG_SELL", "SELL")][:top_n]
+    holds = [r for r in results if r["action"] == "HOLD"]
+
+    return {
+        "category": category,
+        "total_scanned": len(results),
+        "top_buys": buys,
+        "top_sells": sells,
+        "holds": holds,
+        "all_results": results,
+    }
+
+
+@app.get("/api/decisions/mock")
+async def get_mock_investments(limit: int = Query(50, ge=1, le=500)):
+    """Get mock investment decisions with current P&L tracking."""
+    from .report_generator import evaluate_decision
+    loop = asyncio.get_event_loop()
+    decisions = load_decisions()
+    if not decisions:
+        return {"total": 0, "decisions": [], "summary": {}}
+
+    # Evaluate recent decisions with current prices
+    evaluated = []
+    actionable = [d for d in decisions if d.get("action") in ("STRONG_BUY", "BUY", "STRONG_SELL", "SELL")]
+    for d in actionable[-limit:]:
+        try:
+            result = await loop.run_in_executor(executor, evaluate_decision, d)
+            evaluated.append(result)
+        except Exception:
+            evaluated.append({**d, "outcome": "evaluation_error"})
+
+    # Summary stats
+    pnl_values = [e.get("pnl_pct", 0) for e in evaluated if "pnl_pct" in e]
+    winners = sum(1 for p in pnl_values if p > 0)
+    total = len(pnl_values)
+
+    return {
+        "total": total,
+        "decisions": evaluated,
+        "summary": {
+            "total_trades": total,
+            "winners": winners,
+            "losers": total - winners,
+            "hit_rate": round(winners / total * 100, 1) if total > 0 else 0,
+            "avg_pnl": round(sum(pnl_values) / len(pnl_values), 2) if pnl_values else 0,
+            "total_pnl": round(sum(pnl_values), 2),
+            "best_trade": round(max(pnl_values), 2) if pnl_values else 0,
+            "worst_trade": round(min(pnl_values), 2) if pnl_values else 0,
+        },
+    }
 
 
 # ------- LEARNING ENGINE -------
@@ -329,22 +421,41 @@ async def import_portfolio(req: CSVImportRequest):
 
 @app.post("/api/portfolio/upload")
 async def upload_portfolio(file: UploadFile = File(...)):
-    """Upload portfolio from Excel (.xlsx) or CSV file."""
+    """Upload portfolio from Excel (.xlsx/.xls) or CSV file.
+    Handles Angel One and other broker statement formats with metadata rows."""
     try:
         contents = await file.read()
         
         if file.filename.endswith('.xlsx') or file.filename.endswith('.xls'):
-            # Read Excel file
-            df = pd.read_excel(io.BytesIO(contents))
+            # Read Excel with NO assumed header to inspect all rows
+            raw_df = pd.read_excel(io.BytesIO(contents), header=None)
+            
+            # Find the actual header row by looking for broker column keywords
+            header_keywords = ['scrip', 'ticker', 'symbol', 'company', 'quantity', 'isin', 'instrument']
+            header_row = None
+            for idx, row in raw_df.iterrows():
+                row_text = ' '.join(str(v).lower() for v in row.values if pd.notna(v))
+                matches = sum(1 for kw in header_keywords if kw in row_text)
+                if matches >= 3:
+                    header_row = idx
+                    break
+            
+            if header_row is None:
+                return {"error": f"Could not find holding data header in Excel. First rows: {raw_df.head(10).to_string()}"}
+            
+            # Re-read with correct header row
+            df = pd.read_excel(io.BytesIO(contents), header=header_row)
+            # Drop any fully empty rows
+            df = df.dropna(how='all')
             csv_content = df.to_csv(index=False)
         elif file.filename.endswith('.csv'):
-            # Read CSV file
             csv_content = contents.decode('utf-8')
         else:
             raise HTTPException(status_code=400, detail="File must be .xlsx, .xls, or .csv")
         
-        # Import using existing CSV import logic
         result = import_from_csv(csv_content)
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error processing file: {str(e)}")

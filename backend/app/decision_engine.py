@@ -151,17 +151,26 @@ def analyze_stock(ticker: str) -> dict:
     except Exception:
         weights = dict(WEIGHTS)
 
-    # Weighted composite score
+    # Derive volume/delivery score from technical analysis volume signal
+    vol_signal = tech.get("details", {}).get("volume", {})
+    vol_score = 50.0
+    vs = vol_signal.get("signal", "neutral")
+    if vs == "strong_accumulation":
+        vol_score = 80
+    elif vs == "accumulation":
+        vol_score = 65
+    elif vs == "strong_distribution":
+        vol_score = 20
+    elif vs == "distribution":
+        vol_score = 35
+
+    # Weighted composite score — all factors now have real analysis
     composite = (
-        tech["score"] * weights.get("technical", 0.25) +
-        fund["score"] * weights.get("fundamental", 0.20) +
-        momentum["score"] * weights.get("momentum", 0.15) +
-        macro["score"] * weights.get("macro", 0.10) +
-        50 * weights.get("volume_delivery", 0.10) +
-        50 * weights.get("sentiment", 0.05) +
-        50 * weights.get("seasonal", 0.05) +
-        50 * weights.get("global_correlation", 0.05) +
-        50 * weights.get("options_flow", 0.05)
+        tech["score"] * weights.get("technical", 0.30) +
+        fund["score"] * weights.get("fundamental", 0.25) +
+        momentum["score"] * weights.get("momentum", 0.20) +
+        macro["score"] * weights.get("macro", 0.15) +
+        vol_score * weights.get("volume_delivery", 0.10)
     )
 
     # Determine final action

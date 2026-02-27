@@ -42,8 +42,16 @@ export const api = {
   getMacro: () =>
     fetchJson<import('./types').MacroData>('/api/macro'),
 
-  getUniverse: () =>
-    fetchJson<{ tickers: string[]; count: number }>('/api/universe'),
+  getUniverse: (category = 'all') =>
+    fetchJson<Record<string, unknown>>(`/api/universe?category=${category}`),
+
+  scanUniverse: (category: string, topN = 10) =>
+    fetchJson<import('./types').ScanResult>(`/api/scan/universe?category=${category}&top_n=${topN}`, {
+      method: 'POST',
+    }),
+
+  getMockInvestments: (limit = 50) =>
+    fetchJson<Record<string, unknown>>(`/api/decisions/mock?limit=${limit}`),
 
   getStockInfo: (ticker: string) =>
     fetchJson<Record<string, unknown>>(`/api/info/${ticker}`),

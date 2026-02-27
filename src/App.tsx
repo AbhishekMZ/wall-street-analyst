@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import {
-  TrendingUp, Radar, Globe, FileText, BookOpen, Sparkles, Brain, Briefcase,
+  TrendingUp, Radar, Globe, FileText, BookOpen, Sparkles, Brain, Briefcase, DollarSign,
 } from 'lucide-react';
 import { prompts } from './data/prompts';
 import CategoryFilter from './components/CategoryFilter';
@@ -10,14 +10,16 @@ import MacroPanel from './components/MacroPanel';
 import ReportPanel from './components/ReportPanel';
 import LearningPanel from './components/LearningPanel';
 import PortfolioPanel from './components/PortfolioPanel';
+import MockInvestmentsPanel from './components/MockInvestmentsPanel';
 
-type Tab = 'scanner' | 'macro' | 'learning' | 'portfolio' | 'reports' | 'templates';
+type Tab = 'scanner' | 'macro' | 'learning' | 'portfolio' | 'mock' | 'reports' | 'templates';
 
 const TABS: { id: Tab; label: string; icon: React.ComponentType<any> }[] = [
   { id: 'scanner', label: 'Analyzer', icon: Radar },
   { id: 'macro', label: 'Macro', icon: Globe },
   { id: 'learning', label: 'Brain', icon: Brain },
   { id: 'portfolio', label: 'Portfolio', icon: Briefcase },
+  { id: 'mock', label: 'Trades', icon: DollarSign },
   { id: 'reports', label: 'Reports', icon: FileText },
   { id: 'templates', label: 'Prompts', icon: BookOpen },
 ];
@@ -94,7 +96,7 @@ function App() {
             </h2>
             <p className="text-zinc-500 text-sm max-w-lg mx-auto leading-relaxed">
               15-factor analysis combining technical, fundamental, momentum, and macro signals.
-              Analyze any NSE stock or scan the entire Nifty 50 for actionable trades.
+              Scan 200+ stocks across Nifty 50, Next 50, Midcaps & Hidden Smallcaps.
             </p>
           </div>
         </section>
@@ -106,6 +108,7 @@ function App() {
         {activeTab === 'macro' && <MacroPanel />}
         {activeTab === 'learning' && <LearningPanel />}
         {activeTab === 'portfolio' && <PortfolioPanel />}
+        {activeTab === 'mock' && <MockInvestmentsPanel />}
         {activeTab === 'reports' && <ReportPanel />}
         {activeTab === 'templates' && (
           <div className="space-y-6">

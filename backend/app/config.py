@@ -9,7 +9,8 @@ DB_PATH = DATA_DIR / "decisions.json"
 REPORTS_DIR = DATA_DIR / "reports"
 REPORTS_DIR.mkdir(exist_ok=True)
 
-# Default universe — Nifty 50 + high-volume mid-caps
+# ─── Stock Universes ───
+
 NIFTY50 = [
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
     "HINDUNILVR.NS", "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "ITC.NS",
@@ -23,17 +24,69 @@ NIFTY50 = [
     "INDUSINDBK.NS", "HINDALCO.NS", "UPL.NS", "LTIM.NS", "SHRIRAMFIN.NS",
 ]
 
-# Scoring weights for the decision engine
+NIFTY_NEXT50 = [
+    "ADANIGREEN.NS", "ADANIPOWER.NS", "AMBUJACEM.NS", "AUROPHARMA.NS",
+    "BAJAJ-AUTO.NS", "BANKBARODA.NS", "BEL.NS", "BERGEPAINT.NS",
+    "BOSCHLTD.NS", "CANBK.NS", "CHOLAFIN.NS", "COLPAL.NS",
+    "DABUR.NS", "DLF.NS", "GAIL.NS", "GODREJCP.NS",
+    "HAL.NS", "HAVELLS.NS", "ICICIPRULI.NS", "IDEA.NS",
+    "INDIGO.NS", "IOC.NS", "IRCTC.NS", "JINDALSTEL.NS",
+    "LUPIN.NS", "MARICO.NS", "MCDOWELL-N.NS", "NAUKRI.NS",
+    "NHPC.NS", "NMDC.NS", "OFSS.NS", "PIDILITIND.NS",
+    "PNB.NS", "POLYCAB.NS", "RECLTD.NS", "SAIL.NS",
+    "SIEMENS.NS", "SRF.NS", "TORNTPHARM.NS", "TRENT.NS",
+    "TVSMOTOR.NS", "VEDL.NS", "ZOMATO.NS", "ZYDUSLIFE.NS",
+]
+
+MIDCAP_GEMS = [
+    "ABCAPITAL.NS", "ACE.NS", "ASTRAL.NS", "AFFLE.NS",
+    "ATUL.NS", "BSE.NS", "CDSL.NS", "CLEAN.NS",
+    "CAMS.NS", "DEEPAKFERT.NS", "DEEPAKNTR.NS", "DELHIVERY.NS",
+    "DIXON.NS", "ELGIEQUIP.NS", "FINEORG.NS", "FLUOROCHEM.NS",
+    "HAPPSTMNDS.NS", "HDFCAMC.NS", "IIFL.NS", "IPCALAB.NS",
+    "IRFC.NS", "JIOFIN.NS", "JUBLFOOD.NS", "KALYANKJIL.NS",
+    "KEI.NS", "LICI.NS", "LODHA.NS", "LTTS.NS",
+    "MANAPPURAM.NS", "MAXHEALTH.NS", "MFSL.NS", "MOTHERSON.NS",
+    "MPHASIS.NS", "MUTHOOTFIN.NS", "NAM-INDIA.NS", "OBEROIRLTY.NS",
+    "PAGEIND.NS", "PAYTM.NS", "PERSISTENT.NS", "PETRONET.NS",
+    "PFC.NS", "PIIND.NS", "POLICYBZR.NS", "PRESTIGE.NS",
+    "PVRINOX.NS", "RAJESHEXPO.NS", "RATNAMANI.NS", "SBICARD.NS",
+    "SONACOMS.NS", "STARHEALTH.NS", "SUNTV.NS", "SUPREMEIND.NS",
+    "TATACOMM.NS", "TATACHEM.NS", "TATAELXSI.NS", "TATAPOWER.NS",
+    "TIINDIA.NS", "TIMKEN.NS", "TRIDENT.NS", "UBL.NS",
+]
+
+SMALLCAP_HIDDEN = [
+    "ANGELONE.NS", "BECTORFOOD.NS", "BIKAJI.NS", "CAMPUS.NS",
+    "CAPLIPOINT.NS", "CERA.NS", "DATAPATTNS.NS", "ECLERX.NS",
+    "EIDPARRY.NS", "ENGINERSIN.NS", "FINCABLES.NS", "GARFIBRES.NS",
+    "GILLETTE.NS", "GRINDWELL.NS", "HAPPSTMNDS.NS", "HBLPOWER.NS",
+    "HONAUT.NS", "IFBIND.NS", "JKLAKSHMI.NS", "KAJARIACER.NS",
+    "KANSAINER.NS", "KAYNES.NS", "KFINTECH.NS", "KSB.NS",
+    "LATENTVIEW.NS", "LAXMIMACH.NS", "MARINE.NS", "MASTEK.NS",
+    "MIDHANI.NS", "ROUTE.NS", "SAFARI.NS", "SOLARINDS.NS",
+    "TANLA.NS", "TATAINVEST.NS", "THERMAX.NS", "TRIVENI.NS",
+    "VGUARD.NS", "WHIRLPOOL.NS", "ZENSARTECH.NS", "ZENTEC.NS",
+]
+
+# All universes combined for comprehensive screening
+ALL_UNIVERSES = {
+    "nifty50": NIFTY50,
+    "nifty_next50": NIFTY_NEXT50,
+    "midcap_gems": MIDCAP_GEMS,
+    "smallcap_hidden": SMALLCAP_HIDDEN,
+}
+
+# Scoring weights — redistributed to active factors only
+# Previously: volume_delivery(10%), sentiment(5%), seasonal(5%), 
+#   global_correlation(5%), options_flow(5%) were hardcoded to neutral 50
+# Now: weight flows only to factors that have real analysis
 WEIGHTS = {
-    "technical": 0.25,
-    "fundamental": 0.20,
-    "momentum": 0.15,
+    "technical": 0.30,
+    "fundamental": 0.25,
+    "momentum": 0.20,
+    "macro": 0.15,
     "volume_delivery": 0.10,
-    "macro": 0.10,
-    "sentiment": 0.05,
-    "seasonal": 0.05,
-    "global_correlation": 0.05,
-    "options_flow": 0.05,
 }
 
 # Analysis lookback periods
