@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Radar, Loader2, Search, Zap, TrendingUp, BarChart3, Gem } from 'lucide-react';
+import { Radar, Loader2, Search, Zap, TrendingUp, BarChart3, Gem, Send } from 'lucide-react';
 import { api } from '../api';
 import type { StockDecision } from '../types';
 import DecisionCard from './DecisionCard';
@@ -20,6 +20,18 @@ export default function ScannerPanel() {
   const [singleResult, setSingleResult] = useState<StockDecision | null>(null);
   const [error, setError] = useState('');
   const [scanStats, setScanStats] = useState<{ total: number; buys: number; sells: number } | null>(null);
+  const [bgQueued, setBgQueued] = useState('');
+
+  const analyzeBackground = async () => {
+    if (!ticker.trim()) return;
+    try {
+      await api.analyzeBackground(ticker.trim());
+      setBgQueued(ticker.trim());
+      setTimeout(() => setBgQueued(''), 4000);
+    } catch (e: any) {
+      setError(e.message || 'Failed to queue');
+    }
+  };
 
   const analyzeSingle = async () => {
     if (!ticker.trim()) return;
@@ -80,13 +92,28 @@ export default function ScannerPanel() {
           <button
             onClick={analyzeSingle}
             disabled={analyzing || !ticker.trim()}
-            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 
+            className="flex items-center gap-2 px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 
                        text-white text-sm font-semibold transition-colors disabled:opacity-50 cursor-pointer"
           >
             {analyzing ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
             {analyzing ? 'Analyzing...' : 'Analyze'}
           </button>
+          <button
+            onClick={analyzeBackground}
+            disabled={!ticker.trim()}
+            title="Queue for background analysis — results appear in Agent tab"
+            className="flex items-center gap-1.5 px-3 py-3 rounded-xl bg-cyan-600/20 border border-cyan-500/30 hover:bg-cyan-600/30
+                       text-cyan-400 text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            <Send size={14} />
+          </button>
         </div>
+
+        {bgQueued && (
+          <div className="mt-3 rounded-lg bg-cyan-500/10 border border-cyan-500/20 px-4 py-2">
+            <p className="text-cyan-400 text-xs">Queued <strong>{bgQueued}</strong> for background analysis. Check the <strong>Agent</strong> tab for results.</p>
+          </div>
+        )}
 
         {singleResult && (
           <div className="mt-4">

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import {
-  TrendingUp, Radar, Globe, FileText, BookOpen, Sparkles, Brain, Briefcase, DollarSign,
+  TrendingUp, Radar, Globe, FileText, BookOpen, Sparkles, Brain, Briefcase, DollarSign, Bot,
 } from 'lucide-react';
 import { prompts } from './data/prompts';
 import CategoryFilter from './components/CategoryFilter';
@@ -11,11 +11,13 @@ import ReportPanel from './components/ReportPanel';
 import LearningPanel from './components/LearningPanel';
 import PortfolioPanel from './components/PortfolioPanel';
 import MockInvestmentsPanel from './components/MockInvestmentsPanel';
+import AgentPanel from './components/AgentPanel';
 
-type Tab = 'scanner' | 'macro' | 'learning' | 'portfolio' | 'mock' | 'reports' | 'templates';
+type Tab = 'scanner' | 'agent' | 'macro' | 'learning' | 'portfolio' | 'mock' | 'reports' | 'templates';
 
 const TABS: { id: Tab; label: string; icon: React.ComponentType<any> }[] = [
   { id: 'scanner', label: 'Analyzer', icon: Radar },
+  { id: 'agent', label: 'Agent', icon: Bot },
   { id: 'macro', label: 'Macro', icon: Globe },
   { id: 'learning', label: 'Brain', icon: Brain },
   { id: 'portfolio', label: 'Portfolio', icon: Briefcase },
@@ -105,6 +107,7 @@ function App() {
       {/* Main Content */}
       <main className="max-w-6xl mx-auto px-6 py-8 pb-24">
         {activeTab === 'scanner' && <ScannerPanel />}
+        {activeTab === 'agent' && <AgentPanel />}
         {activeTab === 'macro' && <MacroPanel />}
         {activeTab === 'learning' && <LearningPanel />}
         {activeTab === 'portfolio' && <PortfolioPanel />}

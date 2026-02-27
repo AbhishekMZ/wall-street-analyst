@@ -21,11 +21,16 @@ from .portfolio_manager import (
     load_portfolio, add_holding, remove_holding, import_from_csv,
     get_portfolio_performance, get_portfolio_recommendations,
 )
+from .agent import (
+    start_scheduler, stop_scheduler, get_agent_status, get_activity_log,
+    get_scheduler_jobs, submit_background_analysis, get_background_results,
+    get_completed_result, run_auto_scan, run_auto_learning, log_activity,
+)
 
 app = FastAPI(
     title="Wall Street Analyst API",
-    description="Indian Market Decision System with institutional-grade analysis",
-    version="1.1.0",
+    description="Indian Market Decision System with autonomous agent pipeline",
+    version="2.0.0",
 )
 
 app.add_middleware(
@@ -37,6 +42,17 @@ app.add_middleware(
 )
 
 executor = ThreadPoolExecutor(max_workers=4)
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Start the autonomous agent scheduler on server boot."""
+    start_scheduler()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    stop_scheduler()
 
 
 class AnalyzeRequest(BaseModel):
@@ -75,19 +91,63 @@ class CSVImportRequest(BaseModel):
 async def root():
     return {
         "service": "Wall Street Analyst",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "status": "running",
+        "agent": "autonomous",
         "endpoints": [
             "/api/analyze/{ticker}",
+            "/api/analyze/background/{ticker}",
             "/api/scan",
+            "/api/agent/status",
+            "/api/agent/trigger/{universe}",
             "/api/decisions",
+            "/api/decisions/mock",
             "/api/reports/weekly",
-            "/api/reports/cumulative",
             "/api/macro",
             "/api/learning",
             "/api/portfolio",
         ],
     }
+
+
+# ------- AGENT -------
+
+@app.get("/api/agent/status")
+async def agent_status():
+    """Get autonomous agent status, scheduled jobs, and recent activity."""
+    status = get_agent_status()
+    status["scheduled_jobs"] = get_scheduler_jobs()
+    return status
+
+
+@app.get("/api/agent/activity")
+async def agent_activity(limit: int = Query(50, ge=1, le=200)):
+    """Get agent activity log."""
+    return {"activities": get_activity_log(limit)}
+
+
+@app.post("/api/agent/trigger/{universe}")
+async def trigger_scan(universe: str):
+    """Manually trigger a background scan of a specific universe."""
+    if universe not in ALL_UNIVERSES and universe != "all":
+        raise HTTPException(status_code=400, detail=f"Unknown universe: {universe}. Options: {list(ALL_UNIVERSES.keys()) + ['all']}")
+
+    loop = asyncio.get_event_loop()
+    if universe == "all":
+        # Run full scan in background thread
+        _future = loop.run_in_executor(executor, run_full_scan if universe == "all" else lambda: run_auto_scan(universe))
+    else:
+        _future = loop.run_in_executor(executor, run_auto_scan, universe)
+
+    return {"status": "triggered", "universe": universe, "message": f"Background scan started for {universe}. Check /api/agent/status for progress."}
+
+
+@app.post("/api/agent/learn")
+async def trigger_learning():
+    """Manually trigger a learning cycle."""
+    loop = asyncio.get_event_loop()
+    _future = loop.run_in_executor(executor, run_auto_learning)
+    return {"status": "triggered", "message": "Learning cycle started in background."}
 
 
 # ------- ANALYSIS -------
@@ -107,6 +167,33 @@ async def analyze_single_stock(ticker: str, save: bool = Query(True)):
     if save:
         await loop.run_in_executor(executor, save_decision, result)
 
+    return result
+
+
+@app.get("/api/analyze/background/{ticker}")
+async def analyze_background(ticker: str):
+    """Submit stock for background analysis. Returns immediately with a task ID."""
+    if not ticker.endswith(".NS") and not ticker.endswith(".BO"):
+        ticker = ticker.upper() + ".NS"
+    task_id = submit_background_analysis(ticker)
+    return {"task_id": task_id, "ticker": ticker, "status": "queued"}
+
+
+@app.get("/api/analyze/results")
+async def get_bg_results():
+    """Get all background analysis results (pending + completed)."""
+    return get_background_results()
+
+
+@app.get("/api/analyze/result/{task_id}")
+async def get_bg_result(task_id: str):
+    """Get a specific background analysis result."""
+    result = get_completed_result(task_id)
+    if not result:
+        bg = get_background_results()
+        if task_id in bg.get("pending", {}):
+            return {"status": "pending", **bg["pending"][task_id]}
+        raise HTTPException(status_code=404, detail="Task not found")
     return result
 
 

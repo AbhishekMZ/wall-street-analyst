@@ -56,11 +56,30 @@ export const api = {
   getStockInfo: (ticker: string) =>
     fetchJson<Record<string, unknown>>(`/api/info/${ticker}`),
 
+  // Agent
+  getAgentStatus: () =>
+    fetchJson<Record<string, unknown>>('/api/agent/status'),
+
+  getAgentActivity: (limit = 50) =>
+    fetchJson<{ activities: Array<Record<string, unknown>> }>(`/api/agent/activity?limit=${limit}`),
+
+  triggerScan: (universe: string) =>
+    fetchJson<Record<string, unknown>>(`/api/agent/trigger/${universe}`, { method: 'POST' }),
+
+  triggerLearning: () =>
+    fetchJson<Record<string, unknown>>('/api/agent/learn', { method: 'POST' }),
+
+  analyzeBackground: (ticker: string) =>
+    fetchJson<Record<string, unknown>>(`/api/analyze/background/${ticker}`),
+
+  getBackgroundResults: () =>
+    fetchJson<Record<string, unknown>>('/api/analyze/results'),
+
   // Learning Engine
   getLearning: () =>
     fetchJson<Record<string, unknown>>('/api/learning'),
 
-  triggerLearning: () =>
+  triggerLegacyLearning: () =>
     fetchJson<Record<string, unknown>>('/api/learning/evaluate', { method: 'POST' }),
 
   // Portfolio
