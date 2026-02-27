@@ -147,29 +147,59 @@ def import_from_csv(csv_content: str) -> dict:
 
     if not ticker_col:
         return {"error": f"Could not find ticker column. Found: {reader.fieldnames}"}
+    
+    if not qty_col:
+        return {"error": f"Could not find quantity column. Found: {reader.fieldnames}"}
+    
+    if not price_col:
+        return {"error": f"Could not find price column. Found: {reader.fieldnames}"}
 
     imported = 0
     errors = []
+    skipped = 0
+    
     for row in reader:
         try:
-            ticker_raw = row[ticker_col].strip().upper()
+            ticker_raw = row.get(ticker_col, "").strip().upper()
             if not ticker_raw or len(ticker_raw) < 2:
+                skipped += 1
                 continue
 
             # Extract ticker symbol (handle formats like "MARINE" or "HDFCBANK")
             ticker = ticker_raw.split()[0] if ' ' in ticker_raw else ticker_raw
             
-            qty = float(row[qty_col].replace(",", "")) if qty_col and row.get(qty_col) else 1
-            price = float(row[price_col].replace(",", "")) if price_col and row.get(price_col) else 0
+            # Get quantity and price with better error handling
+            qty_str = row.get(qty_col, "0").replace(",", "").strip()
+            price_str = row.get(price_col, "0").replace(",", "").strip()
+            
+            qty = float(qty_str) if qty_str and qty_str != "" else 0
+            price = float(price_str) if price_str and price_str != "" else 0
+            
             date = row.get(date_col, "").strip() if date_col else None
 
             if qty > 0 and price > 0:
+                # Add .NS suffix for NSE stocks if not present
+                if not ticker.endswith('.NS') and not ticker.endswith('.BO'):
+                    ticker = f"{ticker}.NS"
                 add_holding(ticker, qty, price, date)
                 imported += 1
+            else:
+                errors.append(f"{ticker_raw}: Invalid qty ({qty}) or price ({price})")
         except Exception as e:
-            errors.append(f"Row {ticker_raw if 'ticker_raw' in locals() else 'unknown'}: {str(e)}")
+            errors.append(f"{ticker_raw if 'ticker_raw' in locals() else 'unknown'}: {str(e)}")
 
-    return {"imported": imported, "errors": errors, "total_rows": imported + len(errors)}
+    return {
+        "imported": imported, 
+        "errors": errors, 
+        "skipped": skipped,
+        "total_rows": imported + len(errors) + skipped,
+        "columns_found": {
+            "ticker": ticker_col,
+            "quantity": qty_col,
+            "price": price_col,
+            "date": date_col
+        }
+    }
 
 
 def get_portfolio_performance() -> dict:

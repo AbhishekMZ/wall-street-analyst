@@ -129,7 +129,17 @@ export default function PortfolioPanel() {
     setError('');
     try {
       const result = await api.uploadPortfolio(file) as any;
-      alert(`Imported ${result.imported} holdings` + (result.errors?.length ? `\nErrors: ${result.errors.join(', ')}` : ''));
+      
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      
+      const msg = `✅ Imported ${result.imported || 0} holdings successfully!` +
+        (result.skipped ? `\n⏭️ Skipped ${result.skipped} empty rows` : '') +
+        (result.errors?.length ? `\n❌ Errors (${result.errors.length}):\n${result.errors.slice(0, 5).join('\n')}` : '');
+      
+      alert(msg);
       setShowImport(false);
       loadPerf();
       if (e.target) e.target.value = '';
