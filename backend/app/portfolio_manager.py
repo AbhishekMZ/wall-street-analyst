@@ -120,10 +120,14 @@ def import_from_csv(csv_content: str) -> dict:
     lines = csv_content.strip().split('\n')
     header_idx = 0
     
-    # Look for the header row (contains "Scrip" or "ticker" or "symbol")
+    # Look for the header row - must contain multiple expected column keywords
     for i, line in enumerate(lines):
         lower_line = line.lower()
-        if any(keyword in lower_line for keyword in ['scrip', 'ticker', 'symbol', 'stock', 'instrument']):
+        # Count how many expected column keywords are in this line
+        keyword_count = sum(1 for keyword in ['scrip', 'ticker', 'symbol', 'quantity', 'qty', 'price', 'isin', 'company'] 
+                          if keyword in lower_line)
+        # Header row should have at least 3 expected keywords
+        if keyword_count >= 3:
             header_idx = i
             break
     
@@ -133,6 +137,10 @@ def import_from_csv(csv_content: str) -> dict:
     reader = csv.DictReader(io.StringIO(clean_csv))
     if not reader.fieldnames:
         return {"error": "Empty or invalid CSV"}
+    
+    # Debug: log what we found
+    if len(reader.fieldnames) < 3 or all(f.strip() == '' for f in reader.fieldnames):
+        return {"error": f"Invalid header row detected. Found: {reader.fieldnames}. Please ensure your file has proper column headers."}
 
     # Flexible column mapping
     ticker_col = next((f for f in reader.fieldnames if f.lower().strip() in
