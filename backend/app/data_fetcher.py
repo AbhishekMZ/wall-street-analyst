@@ -13,29 +13,40 @@ from .config import LOOKBACK_DAYS
 
 def fetch_stock_data(ticker: str, period_days: int = LOOKBACK_DAYS) -> Optional[pd.DataFrame]:
     """Fetch OHLCV data for an Indian stock from Yahoo Finance."""
-    try:
-        end = datetime.now()
-        start = end - timedelta(days=period_days)
-        stock = yf.Ticker(ticker)
-        df = stock.history(start=start, end=end)
-        if df.empty:
-            return None
-        df.index = pd.to_datetime(df.index)
-        df = df.rename(columns={
-            "Open": "open", "High": "high", "Low": "low",
-            "Close": "close", "Volume": "volume"
-        })
-        return df
-    except Exception as e:
-        print(f"Error fetching {ticker}: {e}")
-        return None
+    for attempt in range(2):
+        try:
+            end = datetime.now()
+            start = end - timedelta(days=period_days)
+            stock = yf.Ticker(ticker)
+            df = stock.history(start=start, end=end)
+            if df.empty:
+                # Try with period parameter as fallback
+                period_map = {30: "1mo", 90: "3mo", 365: "1y"}
+                period_str = period_map.get(period_days, "1y")
+                df = stock.history(period=period_str)
+            if df.empty:
+                return None
+            df.index = pd.to_datetime(df.index)
+            df = df.rename(columns={
+                "Open": "open", "High": "high", "Low": "low",
+                "Close": "close", "Volume": "volume"
+            })
+            return df
+        except Exception as e:
+            print(f"Error fetching {ticker} (attempt {attempt+1}): {e}")
+            if attempt == 0:
+                import time
+                time.sleep(1)
+    return None
 
 
 def fetch_stock_info(ticker: str) -> dict:
     """Fetch fundamental info for a stock."""
     try:
         stock = yf.Ticker(ticker)
-        info = stock.info
+        info = stock.info or {}
+        if not info or len(info) < 5:
+            print(f"Warning: minimal info returned for {ticker}: {list(info.keys())[:5]}")
         return {
             "name": info.get("longName", ticker.replace(".NS", "")),
             "sector": info.get("sector", "Unknown"),
