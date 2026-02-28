@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Bot, Loader2, RefreshCw, Play, Zap, Brain, Clock, Activity, AlertTriangle, TrendingUp } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { Bot, Loader2, RefreshCw, Play, Zap, Brain, Clock, Activity, AlertTriangle, TrendingUp, WifiOff } from 'lucide-react';
 import { api } from '../api';
 
 interface AgentActivity {
@@ -43,26 +43,62 @@ export default function AgentPanel() {
   const [loading, setLoading] = useState(false);
   const [triggering, setTriggering] = useState('');
   const [error, setError] = useState('');
+  const [offline, setOffline] = useState(false);
+  const failCountRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const loadStatus = useCallback(async () => {
-    setLoading(true);
-    setError('');
+  const loadStatus = useCallback(async (manual = false) => {
+    if (manual) setLoading(true);
     try {
       const data = await api.getAgentStatus() as any;
       setStatus(data.state || {});
       setJobs(data.scheduled_jobs || []);
       setActivities(data.recent_activity || []);
+      setError('');
+      setOffline(false);
+      failCountRef.current = 0;
     } catch (e: any) {
-      setError(e.message);
+      failCountRef.current += 1;
+      const isNetworkError = !navigator.onLine ||
+        /failed to fetch|networkerror|err_internet|err_name_not_resolved|err_cert|err_connection/i.test(e.message || '');
+      if (isNetworkError) {
+        setOffline(true);
+      } else if (manual) {
+        setError(e.message);
+      }
     } finally {
-      setLoading(false);
+      if (manual) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadStatus();
-    const interval = setInterval(loadStatus, 15000);
-    return () => clearInterval(interval);
+    loadStatus(true);
+
+    const schedulePoll = () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      const backoff = Math.min(15000 * Math.pow(2, failCountRef.current), 120000);
+      const interval = failCountRef.current > 0 ? backoff : 15000;
+      timerRef.current = setTimeout(async () => {
+        if (document.visibilityState === 'visible') {
+          await loadStatus();
+        }
+        schedulePoll();
+      }, interval);
+    };
+
+    schedulePoll();
+
+    const onVisChange = () => {
+      if (document.visibilityState === 'visible' && failCountRef.current > 0) {
+        loadStatus();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisChange);
+
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      document.removeEventListener('visibilitychange', onVisChange);
+    };
   }, [loadStatus]);
 
   const triggerScan = async (universe: string) => {
@@ -121,7 +157,7 @@ export default function AgentPanel() {
           <div className={`w-2.5 h-2.5 rounded-full ${status?.agent_started_at ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
         </div>
         <button
-          onClick={loadStatus}
+          onClick={() => loadStatus(true)}
           disabled={loading}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-zinc-300 text-xs hover:bg-white/10 transition-colors cursor-pointer"
         >
@@ -130,7 +166,14 @@ export default function AgentPanel() {
         </button>
       </div>
 
-      {error && (
+      {offline && (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 flex items-center gap-2">
+          <WifiOff size={14} className="text-amber-400 shrink-0" />
+          <p className="text-amber-400 text-xs">Backend unreachable — Render free tier may be sleeping. Retrying with backoff...</p>
+        </div>
+      )}
+
+      {error && !offline && (
         <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3">
           <p className="text-red-400 text-xs">{error}</p>
         </div>
