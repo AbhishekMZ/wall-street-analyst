@@ -30,7 +30,7 @@ from .agent import (
 app = FastAPI(
     title="Wall Street Analyst API",
     description="Indian Market Decision System with autonomous agent pipeline",
-    version="2.0.0",
+    version="2.1.0",
 )
 
 app.add_middleware(
@@ -91,7 +91,7 @@ class CSVImportRequest(BaseModel):
 async def root():
     return {
         "service": "Wall Street Analyst",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "status": "running",
         "agent": "autonomous",
         "endpoints": [
