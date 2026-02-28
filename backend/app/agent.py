@@ -21,6 +21,10 @@ from .decision_engine import analyze_stock, save_decision, load_decisions
 from .learning_engine import evaluate_and_learn, get_learning_summary
 from .report_generator import evaluate_decision
 
+# How long between scans before we consider it "overdue" (in seconds)
+SCAN_OVERDUE_THRESHOLD = 3 * 3600  # 3 hours
+WARMUP_STOCKS = 5  # Number of stocks to scan on startup warmup
+
 AGENT_LOG_FILE = DATA_DIR / "agent_log.json"
 AGENT_STATE_FILE = DATA_DIR / "agent_state.json"
 BACKGROUND_RESULTS_FILE = DATA_DIR / "background_results.json"
@@ -333,6 +337,52 @@ def run_auto_learning():
     return {"evaluated": evaluated}
 
 
+# ─── Startup Warmup & Overdue Detection ───
+
+def _check_and_run_overdue():
+    """Check if any scan is overdue and run immediately. Handles Render free tier wake-ups."""
+    state = _load_state()
+    last_scans = state.get("last_scan", {})
+    universe_keys = list(ALL_UNIVERSES.keys())
+    now = datetime.now()
+
+    # Find the most overdue universe
+    most_overdue_key = None
+    most_overdue_secs = 0
+
+    for key in universe_keys:
+        last = last_scans.get(key)
+        if last is None:
+            # Never scanned — most overdue
+            most_overdue_key = key
+            most_overdue_secs = float('inf')
+            break
+        try:
+            last_dt = datetime.fromisoformat(last)
+            elapsed = (now - last_dt).total_seconds()
+            if elapsed > SCAN_OVERDUE_THRESHOLD and elapsed > most_overdue_secs:
+                most_overdue_key = key
+                most_overdue_secs = elapsed
+        except Exception:
+            most_overdue_key = key
+            most_overdue_secs = float('inf')
+            break
+
+    if most_overdue_key:
+        log_activity(
+            "WARMUP_SCAN",
+            f"Overdue scan detected for {most_overdue_key} — running immediately on wake-up",
+            "scan",
+        )
+        try:
+            run_auto_scan(most_overdue_key, max_stocks=WARMUP_STOCKS)
+        except Exception as e:
+            log_activity("WARMUP_ERROR", f"Warmup scan failed: {e}", "error")
+            print(f"Warmup scan error: {e}")
+    else:
+        log_activity("WARMUP_SKIP", "All universes scanned recently, no warmup needed", "system")
+
+
 # ─── Scheduler Setup ───
 
 _scheduler = None
@@ -360,24 +410,33 @@ def start_scheduler():
             key = universe_keys[idx % len(universe_keys)]
             _scan_rotation["idx"] = idx + 1
             try:
+                print(f"🔄 Rotating scan starting: {key}")
                 run_auto_scan(key)
             except Exception as e:
-                log_activity("SCAN_ERROR", f"Scheduled scan error: {e}", "error")
+                log_activity("SCAN_ERROR", f"Scheduled scan error for {key}: {e}", "error")
+                print(f"❌ Scheduled scan error for {key}: {e}")
+
+        # Run first scan 30 seconds after startup (not wait 2 hours!)
+        first_scan_time = datetime.now() + timedelta(seconds=30)
 
         _scheduler.add_job(
             rotating_scan,
             IntervalTrigger(hours=2),
             id="rotating_scan",
             name="Rotate through stock universes",
+            next_run_time=first_scan_time,
             replace_existing=True,
         )
 
-        # Auto-learning every 6 hours
+        # Auto-learning: first run 5 min after startup
+        first_learn_time = datetime.now() + timedelta(minutes=5)
+
         _scheduler.add_job(
             run_auto_learning,
             IntervalTrigger(hours=6),
             id="auto_learning",
             name="Auto-learning cycle",
+            next_run_time=first_learn_time,
             replace_existing=True,
         )
 
@@ -396,8 +455,11 @@ def start_scheduler():
         state["agent_started_at"] = datetime.now().isoformat()
         _save_state(state)
 
-        log_activity("AGENT_STARTED", "Autonomous agent started — scanning every 2h, learning every 6h, full scan daily at 10 AM IST", "system")
-        print("✅ Agent scheduler started")
+        log_activity("AGENT_STARTED", "Autonomous agent started — first scan in 30s, learning in 5m", "system")
+        print("✅ Agent scheduler started — first scan in 30s")
+
+        # Immediately queue a warmup scan in background to check for overdue work
+        _agent_executor.submit(_check_and_run_overdue)
 
     except Exception as e:
         print(f"❌ Failed to start agent scheduler: {e}")
