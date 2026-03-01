@@ -12,6 +12,17 @@ async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+// Keep Render backend alive by pinging every 10 minutes (free tier sleeps after 15min)
+let _keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+export function startKeepAlive() {
+  if (_keepAliveTimer) return;
+  _keepAliveTimer = setInterval(() => {
+    fetch(`${API_BASE}/`, { method: 'GET' }).catch(() => {});
+  }, 10 * 60 * 1000); // 10 minutes
+  // Also ping immediately
+  fetch(`${API_BASE}/`, { method: 'GET' }).catch(() => {});
+}
+
 export const api = {
   analyzeStock: (ticker: string) =>
     fetchJson<import('./types').StockDecision>(`/api/analyze/${ticker}`),

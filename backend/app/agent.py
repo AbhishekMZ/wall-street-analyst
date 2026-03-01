@@ -8,6 +8,7 @@ Runs background scheduled tasks:
 """
 
 import json
+import os
 import threading
 import time
 import random
@@ -18,6 +19,7 @@ from typing import Optional
 
 from .config import DATA_DIR, NIFTY50, NIFTY_NEXT50, MIDCAP_GEMS, SMALLCAP_HIDDEN, ALL_UNIVERSES
 from .decision_engine import analyze_stock, save_decision, load_decisions
+from .data_fetcher import fetch_index_data, fetch_global_indicators
 from .learning_engine import evaluate_and_learn, get_learning_summary
 from .report_generator import evaluate_decision
 
@@ -218,12 +220,23 @@ def run_auto_scan(universe_key: str = "nifty50", max_stocks: int = 0):
 
     log_activity("SCAN_STARTED", f"Auto-scanning {universe_key} ({len(tickers)} stocks)", "scan")
 
+    # Pre-fetch shared data ONCE for the entire scan (saves ~450 API calls per 50-stock scan)
+    try:
+        cached_index_df = fetch_index_data("^NSEI")
+        cached_global_ind = fetch_global_indicators()
+        log_activity("SCAN_PREFETCH", f"Cached Nifty index + {len(cached_global_ind)} global indicators", "scan")
+    except Exception as e:
+        log_activity("SCAN_PREFETCH_ERROR", f"Failed to pre-fetch shared data: {e}", "error")
+        cached_index_df = None
+        cached_global_ind = None
+
     results = []
     errors = 0
+    error_details = []
 
     for i, ticker in enumerate(tickers):
         try:
-            result = analyze_stock(ticker)
+            result = analyze_stock(ticker, cached_index_df=cached_index_df, cached_global_ind=cached_global_ind)
             if "error" not in result:
                 save_decision(result)
                 results.append(result)
@@ -236,13 +249,15 @@ def run_auto_scan(universe_key: str = "nifty50", max_stocks: int = 0):
                     )
             else:
                 errors += 1
+                error_details.append(f"{ticker}: {result.get('error', 'unknown')}")
         except Exception as e:
             errors += 1
+            error_details.append(f"{ticker}: {str(e)}")
             print(f"Auto-scan error for {ticker}: {e}")
 
         # Small delay to avoid rate limiting
         if i < len(tickers) - 1:
-            time.sleep(0.5)
+            time.sleep(1)
 
     # Update state
     state = _load_state()
@@ -257,11 +272,10 @@ def run_auto_scan(universe_key: str = "nifty50", max_stocks: int = 0):
     buys = [r for r in results if r["action"] in ("STRONG_BUY", "BUY")]
     sells = [r for r in results if r["action"] in ("STRONG_SELL", "SELL")]
 
-    log_activity(
-        "SCAN_COMPLETE",
-        f"{universe_key}: {len(results)} analyzed, {len(buys)} buys, {len(sells)} sells, {errors} errors",
-        "scan",
-    )
+    summary = f"{universe_key}: {len(results)} analyzed, {len(buys)} buys, {len(sells)} sells, {errors} errors"
+    if error_details:
+        summary += f" | First errors: {'; '.join(error_details[:3])}"
+    log_activity("SCAN_COMPLETE", summary, "scan")
 
     return {
         "universe": universe_key,
@@ -449,13 +463,30 @@ def start_scheduler():
             replace_existing=True,
         )
 
+        # Self-ping every 10 min to prevent Render free tier from sleeping
+        def _self_ping():
+            import requests
+            try:
+                api_url = os.environ.get("RENDER_EXTERNAL_URL", "http://localhost:8000")
+                requests.get(f"{api_url}/", timeout=10)
+            except Exception:
+                pass  # Best-effort, don't log noise
+
+        _scheduler.add_job(
+            _self_ping,
+            IntervalTrigger(minutes=10),
+            id="keep_alive",
+            name="Keep-alive self-ping",
+            replace_existing=True,
+        )
+
         _scheduler.start()
 
         state = _load_state()
         state["agent_started_at"] = datetime.now().isoformat()
         _save_state(state)
 
-        log_activity("AGENT_STARTED", "Autonomous agent started — first scan in 30s, learning in 5m", "system")
+        log_activity("AGENT_STARTED", "Autonomous agent started — first scan in 30s, learning in 5m, keep-alive every 10m", "system")
         print("✅ Agent scheduler started — first scan in 30s")
 
         # Immediately queue a warmup scan in background to check for overdue work

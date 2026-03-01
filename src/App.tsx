@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   TrendingUp, Radar, Globe, FileText, BookOpen, Sparkles, Brain, Briefcase, DollarSign, Bot,
 } from 'lucide-react';
@@ -12,6 +12,7 @@ import LearningPanel from './components/LearningPanel';
 import PortfolioPanel from './components/PortfolioPanel';
 import MockInvestmentsPanel from './components/MockInvestmentsPanel';
 import AgentPanel from './components/AgentPanel';
+import { startKeepAlive } from './api';
 
 type Tab = 'scanner' | 'agent' | 'macro' | 'learning' | 'portfolio' | 'mock' | 'reports' | 'templates';
 
@@ -28,6 +29,9 @@ const TABS: { id: Tab; label: string; icon: React.ComponentType<any> }[] = [
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('scanner');
+
+  // Keep Render backend alive while any browser tab is open
+  useEffect(() => { startKeepAlive(); }, []);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('All');
 

@@ -128,16 +128,20 @@ def generate_reasoning(tech: dict, fund: dict, momentum: dict, macro: dict) -> l
     return reasons
 
 
-def analyze_stock(ticker: str) -> dict:
-    """Run full analysis pipeline for a single stock."""
+def analyze_stock(ticker: str, cached_index_df=None, cached_global_ind=None) -> dict:
+    """Run full analysis pipeline for a single stock.
+    
+    Pass cached_index_df and cached_global_ind to avoid redundant API calls
+    when scanning multiple stocks in a batch.
+    """
     # Fetch data
     df = fetch_stock_data(ticker)
     if df is None or df.empty:
         return {"error": f"Could not fetch data for {ticker}", "ticker": ticker}
 
     info = fetch_stock_info(ticker)
-    index_df = fetch_index_data("^NSEI")
-    global_ind = fetch_global_indicators()
+    index_df = cached_index_df if cached_index_df is not None else fetch_index_data("^NSEI")
+    global_ind = cached_global_ind if cached_global_ind is not None else fetch_global_indicators()
 
     # Run analysis modules
     tech = run_technical_analysis(df)
