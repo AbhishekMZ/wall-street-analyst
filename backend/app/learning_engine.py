@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from .config import DATA_DIR, WEIGHTS
+from .database import get_learning_state_db, update_learning_state_db, DB_ENABLED
 
 LEARNING_DB = DATA_DIR / "learning_state.json"
 WEIGHT_HISTORY = DATA_DIR / "weight_history.json"
@@ -53,6 +54,23 @@ DEFAULT_STATE = {
 
 
 def load_learning_state() -> dict:
+    # Try database first
+    if DB_ENABLED:
+        db_state = get_learning_state_db()
+        if db_state:
+            # Convert DB format to internal format
+            return {
+                "version": db_state["version"],
+                "created_at": db_state.get("updated_at"),
+                "last_updated": db_state.get("updated_at"),
+                "total_decisions_evaluated": db_state.get("total_decisions_evaluated", 0),
+                "current_weights": db_state.get("adapted_weights", dict(WEIGHTS)),
+                "factor_accuracy": db_state.get("factor_accuracy", {}),
+                "market_regime": db_state.get("regime_state", "unknown"),
+                "confidence_calibration": db_state.get("confidence_calibration", {}),
+            }
+    
+    # Fallback to JSON file
     if LEARNING_DB.exists():
         with open(LEARNING_DB) as f:
             return json.load(f)
@@ -63,6 +81,24 @@ def load_learning_state() -> dict:
 
 def save_learning_state(state: dict):
     state["last_updated"] = datetime.now().isoformat()
+    
+    # Try database first
+    if DB_ENABLED:
+        db_data = {
+            "factor_accuracy": state.get("factor_accuracy", {}),
+            "confidence_calibration": state.get("confidence_calibration", {}),
+            "adapted_weights": state.get("current_weights", dict(WEIGHTS)),
+            "regime_state": state.get("market_regime", "unknown"),
+            "total_decisions_evaluated": state.get("total_decisions_evaluated", 0),
+        }
+        success = update_learning_state_db(db_data)
+        if success:
+            # Also save to JSON as backup
+            with open(LEARNING_DB, "w") as f:
+                json.dump(state, f, indent=2, default=str)
+            return
+    
+    # Fallback to JSON only
     with open(LEARNING_DB, "w") as f:
         json.dump(state, f, indent=2, default=str)
 

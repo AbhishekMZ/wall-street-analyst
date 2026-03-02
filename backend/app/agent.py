@@ -22,6 +22,7 @@ from .decision_engine import analyze_stock, save_decision, load_decisions
 from .data_fetcher import fetch_index_data, fetch_global_indicators
 from .learning_engine import evaluate_and_learn, get_learning_summary
 from .report_generator import evaluate_decision
+from .database import get_agent_state_db, update_agent_state_db, log_activity_db, get_activity_logs_db, DB_ENABLED
 
 # How long between scans before we consider it "overdue" (in seconds)
 SCAN_OVERDUE_THRESHOLD = 3 * 3600  # 3 hours
@@ -38,13 +39,23 @@ _agent_lock = threading.Lock()
 
 # ─── Activity Log ───
 
-def _load_log() -> list:
-    if AGENT_LOG_FILE.exists():
-        try:
-            with open(AGENT_LOG_FILE) as f:
-                return json.load(f)
-        except Exception:
-            return []
+def get_agent_logs(limit: int = 50) -> list:
+    """Retrieve recent activity logs from database or file."""
+    # Try database first
+    if DB_ENABLED:
+        db_logs = get_activity_logs_db(limit=limit)
+        if db_logs:
+            return db_logs
+    
+    # Fallback to JSON file
+    if not AGENT_LOG_FILE.exists():
+        return []
+    try:
+        with open(AGENT_LOG_FILE, "r") as f:
+            logs = json.load(f)
+            return logs[-limit:]
+    except (json.JSONDecodeError, IOError):
+        return []
     return []
 
 
@@ -55,7 +66,8 @@ def _save_log(log: list):
 
 def log_activity(action: str, detail: str, category: str = "system"):
     """Log an agent activity."""
-    log = _load_log()
+    log_activity_db(action, detail, category)
+    log = get_agent_logs()
     log.append({
         "timestamp": datetime.now().isoformat(),
         "action": action,
@@ -67,33 +79,41 @@ def log_activity(action: str, detail: str, category: str = "system"):
 
 def get_activity_log(limit: int = 50) -> list:
     """Get recent agent activity."""
-    log = _load_log()
-    return log[-limit:]
+    return get_agent_logs(limit)
 
 
 # ─── Agent State ───
 
 def _load_state() -> dict:
-    if AGENT_STATE_FILE.exists():
-        try:
-            with open(AGENT_STATE_FILE) as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {
-        "last_scan": {},
-        "next_scan": {},
-        "scan_in_progress": False,
-        "current_scan_universe": None,
-        "total_scans_completed": 0,
-        "total_stocks_analyzed": 0,
-        "total_decisions_saved": 0,
-        "agent_started_at": None,
-        "learning_cycles": 0,
-    }
+    """Load the persistent agent state from database or disk."""
+    # Try database first
+    if DB_ENABLED:
+        db_state = get_agent_state_db()
+        if db_state:
+            return db_state
+    
+    # Fallback to JSON file
+    if not AGENT_STATE_FILE.exists():
+        return {
+            "last_scan": {},
+            "next_scan": {},
+            "scan_in_progress": False,
+            "current_scan_universe": None,
+            "total_scans_completed": 0,
+            "total_stocks_analyzed": 0,
+            "total_decisions_saved": 0,
+            "agent_started_at": None,
+            "learning_cycles": 0,
+        }
+    try:
+        with open(AGENT_STATE_FILE, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return {"last_scan": {}, "next_scan": {}}
 
 
 def _save_state(state: dict):
+    update_agent_state_db(state)
     with open(AGENT_STATE_FILE, "w") as f:
         json.dump(state, f, indent=2, default=str)
 

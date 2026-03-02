@@ -26,11 +26,12 @@ from .agent import (
     get_scheduler_jobs, submit_background_analysis, get_background_results,
     get_completed_result, run_auto_scan, run_auto_learning, log_activity,
 )
+from .database import init_db, DB_ENABLED
 
 app = FastAPI(
     title="Wall Street Analyst API",
     description="Indian Market Decision System with autonomous agent pipeline",
-    version="2.1.0",
+    version="2.2.0",
 )
 
 app.add_middleware(
@@ -46,7 +47,8 @@ executor = ThreadPoolExecutor(max_workers=4)
 
 @app.on_event("startup")
 async def startup_event():
-    """Start the autonomous agent scheduler on server boot."""
+    """Initialize database and start the autonomous agent scheduler on server boot."""
+    init_db()  # Create tables and default data if DATABASE_URL is set
     start_scheduler()
 
 
@@ -91,9 +93,10 @@ class CSVImportRequest(BaseModel):
 async def root():
     return {
         "service": "Wall Street Analyst",
-        "version": "2.1.0",
+        "version": "2.2.0",
         "status": "running",
         "agent": "autonomous",
+        "database": "enabled" if DB_ENABLED else "json_fallback",
         "endpoints": [
             "/api/analyze/{ticker}",
             "/api/analyze/background/{ticker}",

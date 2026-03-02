@@ -9,13 +9,14 @@ import os
 from datetime import datetime
 from typing import Optional
 
-from .config import WEIGHTS, DB_PATH
+from .config import DB_PATH, WEIGHTS
 from .data_fetcher import fetch_stock_data, fetch_stock_info, fetch_index_data, fetch_global_indicators
 from .technical_analysis import run_technical_analysis
 from .fundamental_analysis import run_fundamental_analysis
 from .momentum_analysis import run_momentum_analysis
 from .macro_analysis import analyze_macro_impact
 from .learning_engine import get_adapted_weights
+from .database import save_decision_db, load_decisions_db, DB_ENABLED
 
 
 def compute_target_and_stoploss(price: float, atr: float, signal: str, sr: dict) -> dict:
@@ -247,7 +248,14 @@ def analyze_stock(ticker: str, cached_index_df=None, cached_global_ind=None) -> 
 
 
 def save_decision(decision: dict):
-    """Persist a decision to the JSON store for tracking."""
+    """Persist a decision to database (preferred) or JSON file (fallback)."""
+    # Try database first
+    if DB_ENABLED:
+        success = save_decision_db(decision)
+        if success:
+            return
+    
+    # Fallback to JSON file
     decisions = []
     if DB_PATH.exists():
         try:
@@ -262,12 +270,22 @@ def save_decision(decision: dict):
         json.dump(decisions, f, indent=2, default=str)
 
 
-def load_decisions() -> list:
-    """Load all saved decisions."""
+def load_decisions(limit: int = 100, ticker: str = None) -> list:
+    """Load saved decisions from database (preferred) or JSON file (fallback)."""
+    # Try database first
+    if DB_ENABLED:
+        db_decisions = load_decisions_db(limit=limit, ticker=ticker)
+        if db_decisions:
+            return db_decisions
+    
+    # Fallback to JSON file
     if not DB_PATH.exists():
         return []
     try:
         with open(DB_PATH, "r") as f:
-            return json.load(f)
+            all_decisions = json.load(f)
+            if ticker:
+                all_decisions = [d for d in all_decisions if d.get("ticker") == ticker]
+            return all_decisions[-limit:] if len(all_decisions) > limit else all_decisions
     except (json.JSONDecodeError, IOError):
         return []
