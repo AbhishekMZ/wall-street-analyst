@@ -109,7 +109,7 @@ class AgentActivityLog(Base):
     action = Column(String(50), nullable=False)
     detail = Column(Text, nullable=False)
     category = Column(String(20), index=True)
-    metadata = Column(JSONB)
+    extra_data = Column(JSONB)
     
     __table_args__ = (
         CheckConstraint("category IN ('scan', 'signal', 'learning', 'error', 'system')", name='check_category'),
@@ -354,7 +354,7 @@ def update_agent_state_db(state_data: dict) -> bool:
         return False
 
 
-def log_activity_db(action: str, detail: str, category: str = "system", metadata: Optional[dict] = None) -> bool:
+def log_activity_db(action: str, detail: str, category: str = "system", extra_data: Optional[dict] = None) -> bool:
     """Log agent activity to database."""
     if not DB_ENABLED:
         return False
@@ -365,7 +365,7 @@ def log_activity_db(action: str, detail: str, category: str = "system", metadata
                 action=action,
                 detail=detail,
                 category=category,
-                metadata=metadata
+                extra_data=extra_data
             )
             db.add(log_entry)
         return True
@@ -388,7 +388,7 @@ def get_activity_logs_db(limit: int = 50) -> List[dict]:
                     "action": log.action,
                     "detail": log.detail,
                     "category": log.category,
-                    "metadata": log.metadata
+                    "extra_data": log.extra_data
                 }
                 for log in logs
             ]
