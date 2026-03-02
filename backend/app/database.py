@@ -56,14 +56,14 @@ class Decision(Base):
     name = Column(String(200))
     sector = Column(String(100), index=True)
     action = Column(String(20), nullable=False, index=True)
-    confidence = Column(Integer, CheckConstraint('confidence BETWEEN 0 AND 100'))
+    confidence = Column(Integer)
     composite_score = Column(DECIMAL(5, 2))
     price = Column(DECIMAL(12, 2))
     target_price = Column(DECIMAL(12, 2))
     stop_loss = Column(DECIMAL(12, 2))
     risk_reward_ratio = Column(DECIMAL(5, 2))
     time_horizon = Column(String(20))
-    risk_rating = Column(Integer, CheckConstraint('risk_rating BETWEEN 1 AND 10'))
+    risk_rating = Column(Integer)
     
     # Score breakdown
     technical_score = Column(DECIMAL(5, 2))
@@ -87,6 +87,8 @@ class Decision(Base):
     
     __table_args__ = (
         UniqueConstraint('ticker', 'timestamp', name='unique_ticker_timestamp'),
+        CheckConstraint('confidence BETWEEN 0 AND 100', name='check_confidence'),
+        CheckConstraint('risk_rating BETWEEN 1 AND 10', name='check_risk_rating'),
     )
 
 
@@ -135,8 +137,8 @@ class PortfolioHolding(Base):
 
     id = Column(Integer, primary_key=True)
     ticker = Column(String(20), nullable=False, unique=True)
-    qty = Column(DECIMAL(12, 4), nullable=False, CheckConstraint('qty > 0'))
-    avg_price = Column(DECIMAL(12, 2), nullable=False, CheckConstraint('avg_price > 0'))
+    qty = Column(DECIMAL(12, 4), nullable=False)
+    avg_price = Column(DECIMAL(12, 2), nullable=False)
     buy_date = Column(TIMESTAMP, nullable=False)
     sector = Column(String(100), index=True)
     current_price = Column(DECIMAL(12, 2))
@@ -144,6 +146,11 @@ class PortfolioHolding(Base):
     pnl = Column(DECIMAL(12, 2))
     pnl_pct = Column(DECIMAL(8, 2))
     last_updated = Column(TIMESTAMP, default=datetime.utcnow)
+    
+    __table_args__ = (
+        CheckConstraint('qty > 0', name='check_qty_positive'),
+        CheckConstraint('avg_price > 0', name='check_avg_price_positive'),
+    )
 
 
 class WeightHistory(Base):

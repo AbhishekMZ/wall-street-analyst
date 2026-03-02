@@ -56,7 +56,6 @@ def get_agent_logs(limit: int = 50) -> list:
             return logs[-limit:]
     except (json.JSONDecodeError, IOError):
         return []
-    return []
 
 
 def _save_log(log: list):
@@ -65,16 +64,35 @@ def _save_log(log: list):
 
 
 def log_activity(action: str, detail: str, category: str = "system"):
-    """Log an agent activity."""
-    log_activity_db(action, detail, category)
-    log = get_agent_logs()
-    log.append({
+    """Log an agent activity to database or file."""
+    # Try database first
+    if DB_ENABLED:
+        try:
+            log_activity_db(action, detail, category)
+        except Exception:
+            pass  # Fallback to JSON
+    
+    # Also log to JSON file for backup
+    log_entry = {
         "timestamp": datetime.now().isoformat(),
         "action": action,
         "detail": detail,
         "category": category,
-    })
-    _save_log(log)
+    }
+    
+    logs = []
+    if AGENT_LOG_FILE.exists():
+        try:
+            with open(AGENT_LOG_FILE, "r") as f:
+                logs = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            logs = []
+    
+    logs.append(log_entry)
+    logs = logs[-500:]  # Keep last 500
+    
+    with open(AGENT_LOG_FILE, "w") as f:
+        json.dump(logs, f, indent=2, default=str)
 
 
 def get_activity_log(limit: int = 50) -> list:
@@ -113,9 +131,18 @@ def _load_state() -> dict:
 
 
 def _save_state(state: dict):
-    update_agent_state_db(state)
-    with open(AGENT_STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2, default=str)
+    """Persist agent state to database or disk."""
+    with _agent_lock:
+        # Try database first
+        if DB_ENABLED:
+            try:
+                update_agent_state_db(state)
+            except Exception:
+                pass  # Fallback to JSON
+        
+        # Always save to JSON as backup
+        with open(AGENT_STATE_FILE, "w") as f:
+            json.dump(state, f, indent=2, default=str)
 
 
 def get_agent_status() -> dict:
